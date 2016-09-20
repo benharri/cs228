@@ -1,0 +1,340 @@
+Listing client Makefile...
+
+CSW = -O3 -Wall
+LSW = -lfd
+
+all:
+	make client
+
+client: client.o Makefile
+	g++ client.o -o client $(LSW)
+
+client.o: client.cc Makefile
+	g++ client.cc -c -o client.o $(CSW)
+
+client.cc: client.h Makefile
+	touch client.cc
+
+clean:
+	touch Makefile; make
+
+Listing client.cc...
+
+// Ben Harris
+
+// Allows user to run a specified program on a remote client
+// Uses a socket to send input and receive output
+
+#include <iostream>
+#include <cstdlib>
+#include <string>
+#include <fstream>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <fdstream/fdstream.h>
+#include <fcntl.h>
+#include "client.h"
+using namespace std;
+
+int main(int argc, char **argv){
+
+  if(argc != 2){
+    cout << "Please add the remote hostname as an argument." << endl;
+    exit(1);
+  }
+
+  run(argv[1]);
+
+  return 0;
+}
+
+
+void run(char* hostname){
+  // set up socket, connect to hostname
+  struct hostent *h;
+  sethostent(1);
+  h = gethostbyname(hostname);
+  endhostent();
+
+  int s = socket(AF_INET, SOCK_STREAM, 0);
+  sockaddr_in sin;
+  sin.sin_family = AF_INET;
+  sin.sin_port = htons(12346);
+  sin.sin_addr = (*(in_addr *) h->h_addr_list[0]);
+  int c = connect(s, (sockaddr *)&sin, sizeof(sockaddr_in));
+  if(c < 0) {perror("connect"); exit(1);}
+
+  fdistream sock_in (s);
+  fdostream sock_out (s);
+
+  // asking for user input
+  cout << "Program to run on " << hostname << ": ";
+  string exe;
+  getline(cin, exe);
+  cout << exe << " will be run on " << hostname << endl;
+  sock_out << exe << endl;
+
+  cout << "Input filepath: ";
+  string in_path;
+  getline(cin, in_path);
+  fstream in_file (in_path.c_str());
+
+  cout << "Output filepath: ";
+  string out_path;
+  getline(cin, out_path);
+  fstream out_file (out_path.c_str());
+
+  // read and encode the input file
+  // every \0 is replaced with \0\0
+  // after file is read completely, send \0\1 to signal eof without closing socket
+  // send input file now
+  char ch;
+  while(in_file.get(ch)){
+    if(ch == '\0') sock_out << '\0' << '\0';
+    else sock_out << ch;
+  }
+  in_file.close();
+  sock_out << '\0' << '\1';
+  sock_out.flush();
+
+  // server should execute exe on in_file now
+
+  // wait for response?
+  while(sock_in.get(ch)){
+    if(ch == '\0'){
+      sock_in.get(ch);
+      if(ch == '\1'){ // break if \0\1 received
+        out_file.close();
+        break;
+      }else out_file << ch;
+    }else out_file << ch;
+  }
+  out_file.close();
+
+  // ask if want to run another program
+  cout << "Would you like to run another program on " << hostname << "? [Y/N]";
+  string cont;
+  getline(cin, cont);
+  if(cont != "n" && cont != "N") run(hostname);
+  sock_out.close();
+}
+
+
+Listing client.h...
+
+// Ben Harris
+
+#ifndef _CLIENT_
+#define _CLIENT_
+
+#include <iostream>
+#include <cstdlib>
+#include <string>
+#include <fstream>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <fdstream/fdstream.h>
+#include <fcntl.h>
+using namespace std;
+// method definitions
+int main(int argc, char **argv);
+void run(char *hostname); // This used just to run the program again if user responds "y"
+
+#endif
+
+
+Listing server Makefile...
+
+CSW = -O3 -Wall
+LSW = -lfd
+
+all:
+	make server
+
+server: server.o Makefile
+	g++ server.o -o server $(LSW)
+
+server.o: server.cc Makefile
+	g++ server.cc -c -o server.o $(CSW)
+
+server.cc: server.h Makefile
+	touch server.cc
+
+clean:
+	touch Makefile; make
+Listing server.cc...
+
+// Ben Harris
+
+// Receives input from client, runs specified program, sends output back down the socket
+
+#include <iostream>
+#include <fstream>
+#include <cstdlib>
+#include <string>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <fdstream/fdstream.h>
+#include <fcntl.h>
+#include "server.h"
+using namespace std;
+
+int main(int argc, char **argv){
+
+  int sc = socket(AF_INET, SOCK_STREAM, 0);
+  sockaddr_in sin;
+  sin.sin_family = AF_INET;
+  sin.sin_port = htons(12346);
+  sin.sin_addr.s_addr = INADDR_ANY;
+
+  int b = bind(sc, (sockaddr *)&sin, sizeof(sockaddr_in));
+  if(b < 0) {perror("bind"), exit(1);}
+
+  listen(sc, 1);
+
+  int s = accept(sc, NULL, NULL);
+  if(s < 0) {perror("accept"); exit(1);}
+
+  fdistream sock_in(s);
+  fdostream sock_out(s);
+
+  string exe;
+  getline(sock_in, exe);
+  cout << exe << endl;
+
+  while(sock_in.get()){
+
+    // get the input file from the socket
+    // decode it
+    // input file terminates at \0\1
+    ofstream tmp ("input_file.txt");
+    char c;
+    while(sock_in.get(c)){
+      // cout << c << endl;
+      if(c == '\0'){
+        sock_in.get(c);
+        if(c == '\1'){ // end the input file
+          cout << "---end of input file---" << endl;
+          tmp.close();
+          break;
+        }else tmp << c;
+      }else tmp << c;
+    }
+    tmp.close();
+
+    pid_t pid = fork();
+    if(pid < 0) exit(1);
+    if(pid > 0){ // parent
+      int status;
+      wait(&status);
+
+      cout << "parent process. child is dead." << endl;
+      ifstream tm ("temp.tmp");
+      char ch;
+      while(tm.get(ch)){
+        if(ch == '\0') sock_out << '\0' << '\0';
+        else sock_out << ch;
+      }
+      tm.close();
+      sock_out << '\0' << '\1';
+      sock_out.flush();
+
+    }else{ // child. program executed here
+
+      int fd = open("input_file.txt", O_RDONLY);
+      cout << "child process: about to execute " << exe << endl;
+      dup2(fd, 0);
+      close(fd);
+      fd = open("temp.tmp", O_TRUNC | O_CREAT | O_WRONLY, 0700);
+      dup2(fd, 1);
+      close(fd);
+      execl(exe.c_str(), exe.c_str(), NULL);
+
+    }
+  }
+
+  sock_out.close();
+
+  return 0;
+}
+
+
+Listing server.h...
+
+// Ben Harris
+
+#ifndef _SERVER_
+#define _SERVER_
+
+// method definitions
+int main(int argc, char **argv);
+
+
+#endif
+
+
+Compiling client...
+
+make client
+make[1]: Entering directory `/home/apoe/Desktop/Grading Folder/client'
+g++ client.cc -c -o client.o -O3 -Wall
+g++ client.o -o client -lfd
+make[1]: Leaving directory `/home/apoe/Desktop/Grading Folder/client'
+rm: cannot remove ‘PG2*.out’: No such file or directory
+
+Compiling server...
+
+make server
+make[1]: Entering directory `/home/apoe/Desktop/Grading Folder/server'
+g++ server.cc -c -o server.o -O3 -Wall
+g++ server.o -o server -lfd
+make[1]: Leaving directory `/home/apoe/Desktop/Grading Folder/server'
+
+Starting server...
+
+
+Running client...
+
+Program to run on euclid.nmu.edu: /bin/ls will be run on euclid.nmu.edu
+Input filepath: /bin/ls
+Output filepath: Would you like to run another program on euclid.nmu.edu? [Y/N]connect: Connection refused
+
+Data Case 1...
+
+cat: PG2-1apoetest.out: No such file or directory
+cmp: PG2-1apoetest.out: No such file or directory
+
+Data Case 2...
+
+cat: PG2-2apoetest.out: No such file or directory
+cmp: PG2-2apoetest.out: No such file or directory
+
+Data Case 3...
+
+cat: PG2-3apoetest.out: No such file or directory
+cmp: PG2-3apoetest.out: No such file or directory
+
+Checking if server is still running...
+
+root      2092  0.0  0.1  39492  8928 ?        Sl    2015  16:40 /usr/bin/python /usr/bin/fail2ban-server -b -s /var/run/fail2ban/fail2ban.sock -p /var/run/fail2ban/fail2ban.pid
+nrussell 14307  0.0  0.0   2460   800 ?        Ss   15:38   0:00 /usr/lib/openssh/sftp-server
+apoe     16257  0.0  0.0   4680   828 pts/31   R+   16:16   0:00 grep -i server
+
+Does not appear to make output files.
+
+10/50.
+
+Fix by Monday 22 February 2016.
+

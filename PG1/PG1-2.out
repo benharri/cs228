@@ -1,0 +1,159 @@
+Listing firstchar.cc...
+
+// Ben Harris
+// firstchar.cc asks for a string/word, reverses it, then forks
+// child process execls ./lastchar with the reversed string/word
+// parent process waits for ./lastchar and displays the return byte (which contains the last char of the string)
+
+#include <iostream>
+#include <cstdlib>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+using namespace std;
+
+int main(int argc, char **argv){
+  cout << "Enter a word: ";
+
+  char word[256];
+  cin.getline(word, 256);
+  unsigned int input_length = strlen(word);
+  char out[input_length + 1];
+
+  unsigned int i, j;
+  for(i = 0, j = input_length - 1; i < input_length; i++, j--) out[i] = word[j];
+  out[input_length] = '\0';
+
+  pid_t pid = fork();
+  if(pid == 0){ // child
+    execl("./lastchar", "lastchar", out, NULL);
+  } else { // parent
+    int status;
+    wait(&status);
+    cout << "First char: " << (char) WEXITSTATUS(status) << endl;
+  }
+
+  return 0;
+}
+
+
+Listing forkandsquare.cc...
+
+// Ben Harris
+// forkandsquare.cc forks itself:
+// the parent sends a user-inputted integer to the child process through a pipe and waits for something to be returned on a different pipe
+// the child reads from one pipe, squares the value and writes it to the other pipe.
+
+#include <iostream>
+#include <cstdlib>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <fdstream/fdstream.h>
+using namespace std;
+
+int send[2];
+int ret[2];
+
+void child(){
+  // the child process reads information from the read end of one pipe,
+  // parses it as an int, squares it, and writes that to the other pipe.
+
+  close(send[1]); // close write end of send
+  close(ret[0]); // close read end of ret
+
+  fdistream send_in (send[0]);
+  string s;
+  getline(send_in, s);
+  send_in.close();
+
+  int h = atoi(s.c_str());
+  h *= h;
+
+  fdostream ret_out (ret[1]);
+  ret_out << h << endl;
+  ret_out.close();
+}
+
+void parent(){
+  // the parent process asks the user for an integer, writes that to a pipe,
+  // waits for the child to die, and prints what it finds on the read end of the other pipe.
+
+  close(send[0]); // close read end of send
+  close(ret[1]); // close write end of ret
+
+  cout << "Enter an integer to square: " << endl;
+  string s;
+  getline(cin, s);
+  fdostream send_out (send[1]);
+  send_out << s << endl; // pass inpt to child process through a pipe....
+  send_out.close();
+
+  int status;
+  wait(&status);
+
+  fdistream ret_in (ret[0]);
+  getline(ret_in, s);
+  ret_in.close();
+
+  cout << "result: " << s << endl;
+}
+
+int main(int argc, char **argv){
+  int send_result = pipe(send);
+  int ret_result = pipe(ret);
+  if(send_result == -1 || ret_result == -1) exit(1);
+
+  pid_t pid = fork();
+  if(pid < 0) exit(1); // error check
+  else if(pid == 0) child();
+  else parent();
+
+  return 0;
+}
+
+
+Listing lastchar.cc...
+
+// Ben Harris
+// lastchar.cc takes one command line argument
+// returns the last char of that string
+
+#include <iostream>
+#include <cstdlib>
+#include <cstring>
+using namespace std;
+
+int main(int argc, char **argv){
+  string ret = argv[1];
+  char c = argv[1][strlen(argv[1]) - 1];
+  return c;
+}
+
+
+Compiling firstchar...
+
+
+Compiling lastchar...
+
+
+Compiling forkandsquare...
+
+
+Executing firstchar 1...
+
+Enter a word: First char: A
+
+Executing firstchar 2...
+
+Enter a word: First char: Z
+
+Executing forkandsquare 3...
+
+Enter an integer to square: 
+result: 49
+
+50/50.
+

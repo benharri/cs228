@@ -1,0 +1,276 @@
+Listing Makefile...
+
+CSW = -O3 -Wall
+LSW = -lfd
+
+all:
+	make client
+
+client: client.o Makefile
+	g++ client.o -o client $(LSW)
+
+client.o: client.cc Makefile
+	g++ client.cc -c -o client.o $(CSW)
+
+client.cc: client.h Makefile
+	touch client.cc
+
+clean:
+	touch Makefile; make
+
+
+
+Listing client.cc...
+
+// Ben Harris
+
+#include <iostream>
+#include <cstdlib>
+#include <string>
+#include <fstream>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <fdstream/fdstream.h>
+#include <fcntl.h>
+#include "client.h"
+using namespace std;
+
+int main(int argc, char **argv){
+
+  if(argc != 2){
+    cout << "Please add the remote hostname as an argument." << endl;
+    exit(1);
+  }
+
+  struct hostent *h;
+  sethostent(1);
+  h = gethostbyname(argv[1]);
+  endhostent();
+
+  int s = socket(AF_INET, SOCK_STREAM, 0);
+  sockaddr_in sin;
+  sin.sin_family = AF_INET;
+  sin.sin_port = htons(12480);
+  sin.sin_addr = (*(in_addr *) h->h_addr_list[0]);
+  int c = connect(s, (sockaddr *)&sin, sizeof(sockaddr_in));
+  if(c < 0) {perror("connect"); exit(1);}
+
+  fdistream sock_in (s);
+  fdostream sock_out (s);
+
+  string player;
+  while(getline(sock_in, player)){
+    cout << player << endl;
+  }
+
+  return 0;
+}
+
+
+Listing client.h...
+
+// Ben Harris
+
+#ifndef _CLIENT_
+#define _CLIENT_
+
+#include <iostream>
+#include <cstdlib>
+#include <string>
+#include <fstream>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <fdstream/fdstream.h>
+#include <fcntl.h>
+using namespace std;
+
+// method definitions
+int main(int argc, char **argv);
+
+
+#endif
+
+
+Listing Makefile...
+
+CSW = -O3 -Wall
+LSW = -lfd
+
+all:
+	make server
+
+server: server.o Makefile
+	g++ server.o -o server $(LSW)
+
+server.o: server.cc Makefile
+	g++ server.cc -c -o server.o $(CSW)
+
+server.cc: server.h Makefile
+	touch server.cc
+
+clean:
+	touch Makefile; make
+
+
+Listing server.cc...
+
+// Ben Harris
+
+// This program manages the current game board and communicates with both clients.
+
+#include <iostream>
+#include <fstream>
+#include <cstdlib>
+#include <string>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <fdstream/fdstream.h>
+#include <fcntl.h>
+#include "server.h"
+using namespace std;
+
+int main(int argc, char **argv){
+
+  int sc = socket(AF_INET, SOCK_STREAM, 0);
+  sockaddr_in sin;
+  sin.sin_family = AF_INET;
+  sin.sin_port = htons(12480);
+  sin.sin_addr.s_addr = INADDR_ANY;
+
+  int b = bind(sc, (sockaddr *)&sin, sizeof(sockaddr_in));
+  if(b < 0){perror("bind"); exit(1);}
+
+  listen(sc, 1);
+
+  Board board;
+
+  for(int i = 0; i < 7; i++){
+    for(int j = 0; j < 6; j++){
+      board[i][j] = 0;
+    }
+  }
+
+  int player1 = accept(sc, NULL, NULL);
+  if(player1 < 0){perror("accept"); exit(1);}
+
+  fdistream player1_in(player1);
+  fdostream player1_out(player1);
+
+  player1_out << "You are the red player." << endl;
+
+  int player2 = accept(sc, NULL, NULL);
+  if(player2 < 0){perror("accept"); exit(1);}
+
+  fdistream player2_in(player2);
+  fdostream player2_out(player2);
+
+  player2_out << "You are the blue player." << endl;
+
+  //// BOTH CONNECTED NOW ////
+  // red goes first
+
+  cout << print_board(board) << endl;
+
+  player1_out << "You go first. Enter a number 1-7 for the column you'd like to play." << endl;
+  player1_out << print_board(board) << endl;
+  string move;
+  getline(player1_in, move);
+
+
+  player1.close();
+  player2.close();
+  delete board[];
+
+  return 0;
+}
+
+string print_board(Board board){
+  string ret = "1\t2\t3\t4\t5\t6\t7\n";
+  for(int i = 0; i < 7; i++){
+    for(int j = 0; i < 6; j++){
+      ret += board[i][j];
+      ret += "\t";
+    }
+    ret += "\n";
+  }
+  return ret;
+}
+
+
+Listing server.h...
+
+// Ben Harris
+
+#ifndef _SERVER_
+#define _SERVER_
+
+#include <iostream>
+#include <fstream>
+#include <cstdlib>
+#include <string>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <fdstream/fdstream.h>
+#include <fcntl.h>
+using namespace std;
+
+// method definitions
+typedef int Board[7][6];
+string print_board(Board board);
+int main(int argc, char **argv);
+
+
+#endif
+
+
+Compiling client...
+
+make client
+make[1]: Entering directory `/home/apoe/Desktop/Grading Folder/client'
+touch client.cc
+g++ client.cc -c -o client.o -O3 -Wall
+g++ client.o -o client -lfd
+make[1]: Leaving directory `/home/apoe/Desktop/Grading Folder/client'
+
+Compiling server...
+
+make server
+make[1]: Entering directory `/home/apoe/Desktop/Grading Folder/server'
+touch server.cc
+g++ server.cc -c -o server.o -O3 -Wall
+server.cc: In function ‘int main(int, char**)’:
+server.cc:70:11: error: request for member ‘close’ in ‘player1’, which is of non-class type ‘int’
+   player1.close();
+           ^
+server.cc:71:11: error: request for member ‘close’ in ‘player2’, which is of non-class type ‘int’
+   player2.close();
+           ^
+server.cc:72:16: error: expected primary-expression before ‘]’ token
+   delete board[];
+                ^
+make[1]: *** [server.o] Error 1
+make[1]: Leaving directory `/home/apoe/Desktop/Grading Folder/server'
+make: *** [all] Error 2
+
+DOES NOT COMPILE.
+
+0/50.
+

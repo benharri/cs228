@@ -1,0 +1,336 @@
+Listing Makefile...
+
+CSW = -O3 -Wall
+LSW = -lfd
+
+all:
+	make client
+
+client: client.o Makefile
+	g++ client.o -o client $(LSW)
+
+client.o: client.cc Makefile
+	g++ client.cc -c -o client.o $(CSW)
+
+client.cc: client.h Makefile
+	touch client.cc
+
+clean:
+	touch Makefile; make
+
+
+
+Listing client.cc...
+
+// Ben Harris
+
+// Allows user to run a specified program on a remote client
+// Uses a socket to send input and receive output
+
+#include <iostream>
+#include <cstdlib>
+#include <string>
+#include <fstream>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <fdstream/fdstream.h>
+#include <fcntl.h>
+#include "client.h"
+using namespace std;
+
+int main(int argc, char **argv){
+
+  if(argc != 2){
+    cout << "Please add the remote hostname as an argument." << endl;
+    exit(1);
+  }
+  // set up socket, connect to hostname
+  struct hostent *h;
+  sethostent(1);
+  h = gethostbyname(argv[1]);
+  endhostent();
+
+  int s = socket(AF_INET, SOCK_STREAM, 0);
+  sockaddr_in sin;
+  sin.sin_family = AF_INET;
+  sin.sin_port = htons(12346);
+  sin.sin_addr = (*(in_addr *) h->h_addr_list[0]);
+  int c = connect(s, (sockaddr *)&sin, sizeof(sockaddr_in));
+  if(c < 0) {perror("connect"); exit(1);}
+
+  fdistream sock_in (s);
+  fdostream sock_out (s);
+
+  string exe, in_path, out_path;
+  char ch;
+
+  while(1){ // keep running programs until user says N
+    cout << "Program to run: ";
+    getline(cin, exe);
+    cout << exe << " will be run " <<  endl;
+    sock_out << exe << endl;
+
+    cout << "Input filepath: ";
+    getline(cin, in_path);
+    fstream in_file (in_path.c_str());
+
+    cout << "Output filepath: ";
+    getline(cin, out_path);
+    ofstream out_file (out_path.c_str());
+
+    // read and encode the input file
+    // every \0 is replaced with \0\0
+    // after file is read completely, send \0\1 to signal eof without closing socket
+    // send input file now
+    while(in_file.get(ch)){
+      if(ch == '\0') sock_out << '\0' << '\0';
+      else sock_out << ch;
+    }
+    in_file.close();
+    sock_out << '\0' << '\1';
+    sock_out.flush();
+
+    // server should execute exe on in_file now
+
+    // wait for response
+    while(sock_in.get(ch)){
+      if(ch == '\0'){
+        sock_in.get(ch);
+        if(ch == '\1') break;
+        else out_file << ch;
+      }else out_file << ch;
+    }
+    out_file.close();
+
+    // ask if want to run another program
+    cout << "Would you like to run another program? [Y/N] ";
+    string cont;
+    getline(cin, cont);
+    if(cont == "n" || cont == "N") break;
+    else cout << "Ready to run another program." << endl;
+
+  }
+  sock_out.close();
+  return 0;
+}
+
+
+
+
+Listing client.h...
+
+// Ben Harris
+
+#ifndef _CLIENT_
+#define _CLIENT_
+
+#include <iostream>
+#include <cstdlib>
+#include <string>
+#include <fstream>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <fdstream/fdstream.h>
+#include <fcntl.h>
+using namespace std;
+// method definitions
+int main(int argc, char **argv);
+
+#endif
+
+
+Listing Makefile...
+
+CSW = -O3 -Wall
+LSW = -lfd
+
+all:
+	make server
+
+server: server.o Makefile
+	g++ server.o -o server $(LSW)
+
+server.o: server.cc Makefile
+	g++ server.cc -c -o server.o $(CSW)
+
+server.cc: server.h Makefile
+	touch server.cc
+
+clean:
+	touch Makefile; make
+
+
+Listing server.cc...
+
+// Ben Harris
+
+// Receives input from client, runs specified program, sends output back down the socket
+
+#include <iostream>
+#include <fstream>
+#include <cstdlib>
+#include <string>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <fdstream/fdstream.h>
+#include <fcntl.h>
+#include "server.h"
+using namespace std;
+
+int main(int argc, char **argv){
+
+  int sc = socket(AF_INET, SOCK_STREAM, 0);
+  sockaddr_in sin;
+  sin.sin_family = AF_INET;
+  sin.sin_port = htons(12346);
+  sin.sin_addr.s_addr = INADDR_ANY;
+
+  int b = bind(sc, (sockaddr *)&sin, sizeof(sockaddr_in));
+  if(b < 0) {perror("bind"), exit(1);}
+
+  listen(sc, 1);
+
+  int s = accept(sc, NULL, NULL);
+  if(s < 0) {perror("accept"); exit(1);}
+
+  fdistream sock_in(s);
+  fdostream sock_out(s);
+
+  string exe;
+  char c;
+
+  while(1){
+    getline(sock_in, exe);
+    if(sock_in.eof()) break;
+    cout << exe << endl;
+    // get the input file from the socket and decode it
+    // input file terminates at \0\1
+    ofstream tmp ("input_file.txt");
+    while(sock_in.get(c)){
+      if(c == '\0'){
+        sock_in.get(c);
+        if(c == '\1'){ // end the input file
+          cout << "---end of input file---" << endl;
+          break;
+        }else tmp << c;
+      }else tmp << c;
+    }
+    tmp.close();
+
+    pid_t pid = fork();
+    if(pid < 0) exit(1);
+    if(pid > 0){ // parent
+      int status;
+      wait(&status);
+
+      cout << exe << " done. sending results back down the socket." << endl;
+
+      ifstream tm ("temp.tmp");
+      while(tm.get(c)){
+        if(c == '\0') sock_out << '\0' << '\0';
+        else sock_out << c;
+      }
+      tm.close();
+      sock_out << '\0' << '\1';
+      sock_out.flush();
+
+    }else{ // child. program executed here
+
+      int fd = open("input_file.txt", O_RDONLY);
+      cout << "child process: about to execute " << exe << endl;
+      dup2(fd, 0);
+      close(fd);
+      fd = open("temp.tmp", O_TRUNC | O_CREAT | O_WRONLY, 0700);
+      dup2(fd, 1);
+      close(fd);
+      execl(exe.c_str(), exe.c_str(), NULL);
+
+    }
+
+  }
+
+  return 0;
+}
+
+
+Listing server.h...
+
+// Ben Harris
+
+#ifndef _SERVER_
+#define _SERVER_
+
+// method definitions
+int main(int argc, char **argv);
+
+
+#endif
+
+
+Compiling client...
+
+make client
+make[1]: Entering directory `/home/apoe/Desktop/Grading Folder/client'
+g++ client.cc -c -o client.o -O3 -Wall
+g++ client.o -o client -lfd
+make[1]: Leaving directory `/home/apoe/Desktop/Grading Folder/client'
+
+Compiling server...
+
+make server
+make[1]: Entering directory `/home/apoe/Desktop/Grading Folder/server'
+g++ server.cc -c -o server.o -O3 -Wall
+g++ server.o -o server -lfd
+make[1]: Leaving directory `/home/apoe/Desktop/Grading Folder/server'
+
+Starting server...
+
+
+Running client...
+
+Program to run: /home/apoe/philos/Grading/Classes/CS228-02-16W/PG2/reverse will be run 
+Input filepath: /home/apoe/philos/Grading/Classes/CS228-02-16W/PG2/reverse
+Output filepath: ---end of input file---
+child process: about to execute /home/apoe/philos/Grading/Classes/CS228-02-16W/PG2/reverse
+/home/apoe/philos/Grading/Classes/CS228-02-16W/PG2/reverse done. sending results back down the socket.
+Would you like to run another program? [Y/N] Ready to run another program.
+Program to run: /home/apoe/philos/Grading/Classes/CS228-02-16W/PG2/reverse will be run 
+Input filepath: Output filepath: /home/apoe/philos/Grading/Classes/CS228-02-16W/PG2/reverse
+---end of input file---
+child process: about to execute /home/apoe/philos/Grading/Classes/CS228-02-16W/PG2/reverse
+/home/apoe/philos/Grading/Classes/CS228-02-16W/PG2/reverse done. sending results back down the socket.
+Would you like to run another program? [Y/N] Ready to run another program.
+Program to run: /home/apoe/philos/Grading/Classes/CS228-02-16W/PG2/reverse will be run 
+Input filepath: Output filepath: /home/apoe/philos/Grading/Classes/CS228-02-16W/PG2/reverse
+---end of input file---
+child process: about to execute /home/apoe/philos/Grading/Classes/CS228-02-16W/PG2/reverse
+/home/apoe/philos/Grading/Classes/CS228-02-16W/PG2/reverse done. sending results back down the socket.
+Would you like to run another program? [Y/N] 
+Data Case 1...
+
+
+Data Case 2...
+
+
+Data Case 3...
+
+
+Checking if server is still running...
+
+root      2092  0.0  0.1  39492  8928 ?        Sl    2015  17:44 /usr/bin/python /usr/bin/fail2ban-server -b -s /var/run/fail2ban/fail2ban.sock -p /var/run/fail2ban/fail2ban.pid
+apoe      7404  0.0  0.0   4680   824 pts/29   S+   22:30   0:00 grep -i server
+
+50/50.
+

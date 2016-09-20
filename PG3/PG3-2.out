@@ -1,0 +1,112 @@
+Listing Makefile...
+
+CSW = -O3 -Wall
+LSW = -lfd
+
+all:
+	make pg3
+
+pg3: pg3.o Makefile
+	g++ pg3.o -o pg3 $(LSW)
+
+pg3.o: pg3.cc Makefile
+	g++ pg3.cc -c -o pg3.o $(CSW)
+
+pg3.cc: pg3.h Makefile
+	touch pg3.cc
+
+clean:
+	touch Makefile; make
+
+
+Listing pg3.cc...
+
+#include <iostream>
+#include <cstdlib>
+#include <string>
+#include <fstream>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <fdstream/fdstream.h>
+#include <fcntl.h>
+#include "pg3.h"
+using namespace std;
+
+int main(int argc, char **argv){
+  if (argc != 3){
+    cout << "Usage:" << endl << "./pg3 email pathtofile" << endl;
+    exit(1);
+  }
+
+  struct hostent *h;
+  sethostent(1);
+  h = gethostbyname("mail.nmu.edu");
+  endhostent();
+
+  int s = socket(AF_INET, SOCK_STREAM, 0);
+  sockaddr_in sin;
+  sin.sin_family = AF_INET;
+  sin.sin_port = htons(25);
+  sin.sin_addr = (*(in_addr *) h->h_addr_list[0]);
+  int c = connect(s, (sockaddr *)&sin, sizeof(sockaddr_in));
+  if(c < 0) {perror("connect"); exit(1);}
+
+  fdistream sock_in (s);
+  fdostream sock_out (s);
+  // ifstream mp3_in (argv[2]);
+
+  sock_out << "HELO mail.nmu.edu" << endl;
+  sock_out << "MAIL FROM: benharri@nmu.edu" << endl;
+  sock_out << "RCPT TO: " << argv[1] << endl;
+  sock_out << "DATA" << endl;
+
+  sock_out << "From: Ben Harris <benharri@nmu.edu>" << endl;
+  sock_out << "To: " << argv[1] << endl;
+  sock_out << "Subject: PG3 mail" << endl;
+  sock_out << endl << "Hello there!" << endl;
+  sock_out << "." << endl;
+
+  sock_out.close();
+  cout << "message sent";
+
+  return 0;
+}
+
+
+Listing pg3.h...
+
+// Ben Harris
+
+#ifndef _PG3_
+#define _PG3_
+
+// method definitions
+int main(int argc, char **argv);
+
+#endif
+
+
+Compiling PG3...
+
+make pg3
+make[1]: Entering directory `/home/apoe/Desktop/Grading Folder'
+g++ pg3.cc -c -o pg3.o -O3 -Wall
+g++ pg3.o -o pg3 -lfd
+make[1]: Leaving directory `/home/apoe/Desktop/Grading Folder'
+
+Running client...
+
+Data Case 1...
+
+message sent
+Data Case 2...
+
+Taking a long time...and MP3 file not attached!
+
+20/50.
+
+Fix by Monday 14 March 2016.
+

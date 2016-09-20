@@ -1,0 +1,32 @@
+Compiling client...
+
+make client
+make[1]: Entering directory `/home/apoe/Desktop/Grading Folder/client'
+g++ client.cc -c -o client.o -O3 -Wall
+g++ client.o -o client -lfd
+make[1]: Leaving directory `/home/apoe/Desktop/Grading Folder/client'
+rm: cannot remove ‘PG2*.out’: No such file or directory
+
+Compiling server...
+
+make server
+make[1]: Entering directory `/home/apoe/Desktop/Grading Folder/server'
+g++ server.cc -c -o server.o -O3 -Wall
+g++ server.o -o server -lfd
+make[1]: Leaving directory `/home/apoe/Desktop/Grading Folder/server'
+
+Starting server...
+
+
+Running client...
+
+What program would you like to run on euclid.nmu.edu?
+/bin/ls will be run on euclid.nmu.edu
+Please specify the path to the input file you would like to send: Please specify the path to the output file where you would like to receive the result of /bin/ls: 
+
+Freezes.
+
+10/50.
+
+Fix by Friday 19 February 2016.
+
